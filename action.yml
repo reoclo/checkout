@@ -1,0 +1,51 @@
+name: 'Reoclo Checkout'
+description: 'Clone or update a repository on a Reoclo-managed server'
+branding:
+  icon: 'download'
+  color: 'blue'
+inputs:
+  api_key:
+    description: 'Reoclo automation API key'
+    required: true
+  server_id:
+    description: 'Target server ID'
+    required: true
+  repository:
+    description: 'Repository to checkout (owner/repo). Defaults to the current repository.'
+    required: false
+  ref:
+    description: 'Branch, tag, or SHA to checkout. Defaults to the default branch.'
+    required: false
+  path:
+    description: 'Directory on the server to checkout into'
+    required: false
+    default: '/opt/deploy/workspace'
+  token:
+    description: 'Token for repository access. Defaults to github.token.'
+    required: false
+  clean:
+    description: 'Remove the target directory before cloning (true/false)'
+    required: false
+    default: 'true'
+  depth:
+    description: 'Clone depth (0 for full clone)'
+    required: false
+    default: '1'
+  submodules:
+    description: 'Checkout submodules (true/false/recursive)'
+    required: false
+    default: 'false'
+  api_url:
+    description: 'Reoclo API URL (for self-hosted instances)'
+    required: false
+    default: 'https://api.reoclo.com'
+outputs:
+  commit_sha:
+    description: 'The checked-out commit SHA on the server'
+  ref:
+    description: 'The ref that was checked out'
+  path:
+    description: 'The path on the server where the repo was checked out'
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
