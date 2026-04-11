@@ -31,7 +31,7 @@ jobs:
 
 ## Setup
 
-1. **Create an Automation API key** in the Reoclo dashboard: **Settings > Automation Keys > Create Key**
+1. **Create an Automation API key** in the Reoclo dashboard: navigate to **API Keys**, select the **Automation Keys** tab, and click **Create Key**
 2. Add `REOCLO_API_KEY` and `REOCLO_SERVER_ID` as GitHub Actions secrets
 3. The action uses `github.token` by default for repository access - no extra token setup needed for same-repo checkouts
 
