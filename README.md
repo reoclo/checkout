@@ -1,6 +1,6 @@
 # Reoclo Checkout (`@reoclo/checkout`)
 
-Clone or update a repository on a [Reoclo](https://reoclo.com)-managed server from GitHub Actions.
+Clone or update a repository on a [Reoclo](https://reoclo.com) managed server from GitHub Actions.
 
 Works like `actions/checkout`, but the code ends up on your remote server instead of the GitHub runner. Pairs with [`@reoclo/run`](https://github.com/reoclo/run) for build and deploy steps.
 
