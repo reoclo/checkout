@@ -50,7 +50,6 @@ For detailed setup, see the [Reoclo documentation](https://docs.reoclo.com/guide
 | `clean` | no | `true` | Remove target directory before cloning |
 | `depth` | no | `1` | Clone depth (0 for full clone) |
 | `submodules` | no | `false` | Checkout submodules (true/false/recursive) |
-| `api_url` | no | `https://api.reoclo.com` | Reoclo API URL (for self-hosted) |
 
 ## Outputs
 
