@@ -2,7 +2,7 @@
   "name": "@reoclo/checkout",
   "version": "1.0.0",
   "private": true,
-  "description": "Clone or update a repository on a Reoclo-managed server",
+  "description": "Clone or update a repository on a Reoclo managed server",
   "scripts": {
     "build": "ncc build src/index.ts -o dist --source-map --license licenses.txt",
     "check": "tsc --noEmit"
