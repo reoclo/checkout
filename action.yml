@@ -1,5 +1,5 @@
 name: 'Reoclo Checkout'
-description: 'Clone or update a repository on a Reoclo-managed server'
+description: 'Clone or update a repository on a Reoclo managed server'
 branding:
   icon: 'download'
   color: 'blue'
