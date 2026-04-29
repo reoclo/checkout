@@ -4,6 +4,15 @@ Clone or update a repository on a [Reoclo](https://reoclo.com) managed server fr
 
 Works like `actions/checkout`, but the code ends up on your remote server instead of the GitHub runner. Pairs with [`@reoclo/run`](https://github.com/reoclo/run) for build and deploy steps.
 
+## Why
+
+`actions/checkout` lands the code on the GitHub-hosted runner. To deploy that code to a remote server you then need SSH keys, rsync setup, or a separate deploy tool. `@reoclo/checkout` skips that hop:
+
+- **Code lands on the deploy target directly.** No SSH keys or rsync wiring.
+- **Uses your existing `github.token`.** No separate deploy credential to rotate.
+- **Auditable.** Every checkout is recorded with the originating repository, workflow, actor, and ref.
+- **Pairs with [`@reoclo/run`](https://github.com/reoclo/run) and [`@reoclo/docker-auth`](https://github.com/reoclo/docker-auth)** for full build and deploy workflows.
+
 ## Quick Start
 
 ```yaml
@@ -31,9 +40,9 @@ jobs:
 
 ## Setup
 
-1. **Create an Automation API key** in the Reoclo dashboard: navigate to **API Keys**, select the **Automation Keys** tab, and click **Create Key**
-2. Add `REOCLO_API_KEY` and `REOCLO_SERVER_ID` as GitHub Actions secrets
-3. The action uses `github.token` by default for repository access - no extra token setup needed for same-repo checkouts
+1. Create an Automation API key in the Reoclo dashboard. Navigate to **API Keys**, select the **Automation Keys** tab, and click **Create Key**.
+2. Add `REOCLO_API_KEY` and `REOCLO_SERVER_ID` as GitHub Actions secrets.
+3. The action uses `github.token` by default for repository access, so no extra token setup is needed for same-repo checkouts.
 
 For detailed setup, see the [Reoclo documentation](https://docs.reoclo.com/guides/github-actions).
 
@@ -49,7 +58,7 @@ For detailed setup, see the [Reoclo documentation](https://docs.reoclo.com/guide
 | `token` | no | `github.token` | Token for repository access |
 | `clean` | no | `true` | Remove target directory before cloning |
 | `depth` | no | `1` | Clone depth (0 for full clone) |
-| `submodules` | no | `false` | Checkout submodules (true/false/recursive) |
+| `submodules` | no | `false` | Checkout submodules (true / false / recursive) |
 
 ## Outputs
 
@@ -68,8 +77,7 @@ For detailed setup, see the [Reoclo documentation](https://docs.reoclo.com/guide
   with:
     api_key: ${{ secrets.REOCLO_API_KEY }}
     server_id: ${{ secrets.REOCLO_SERVER_ID }}
-    ref: develop
-    token: ${{ github.token }}
+    ref: release/2026.1
 ```
 
 ### Checkout into a custom directory
@@ -79,8 +87,7 @@ For detailed setup, see the [Reoclo documentation](https://docs.reoclo.com/guide
   with:
     api_key: ${{ secrets.REOCLO_API_KEY }}
     server_id: ${{ secrets.REOCLO_SERVER_ID }}
-    path: /opt/myapp/src
-    token: ${{ github.token }}
+    path: /opt/myapp
 ```
 
 ### Checkout a different repository
@@ -90,8 +97,9 @@ For detailed setup, see the [Reoclo documentation](https://docs.reoclo.com/guide
   with:
     api_key: ${{ secrets.REOCLO_API_KEY }}
     server_id: ${{ secrets.REOCLO_SERVER_ID }}
-    repository: myorg/shared-config
-    token: ${{ secrets.CROSS_REPO_TOKEN }}
+    repository: myorg/private-tools
+    token: ${{ secrets.PRIVATE_TOOLS_TOKEN }}
+    path: /opt/tools
 ```
 
 ### Incremental updates (skip clean)
@@ -101,11 +109,9 @@ For detailed setup, see the [Reoclo documentation](https://docs.reoclo.com/guide
   with:
     api_key: ${{ secrets.REOCLO_API_KEY }}
     server_id: ${{ secrets.REOCLO_SERVER_ID }}
-    clean: false
-    token: ${{ github.token }}
+    clean: 'false'
+    depth: 0
 ```
-
-If the repo already exists at the target path, the action will `git fetch` and checkout the ref instead of re-cloning.
 
 ### Full clone with submodules
 
@@ -115,66 +121,38 @@ If the repo already exists at the target path, the action will `git fetch` and c
     api_key: ${{ secrets.REOCLO_API_KEY }}
     server_id: ${{ secrets.REOCLO_SERVER_ID }}
     depth: 0
-    submodules: recursive
-    token: ${{ github.token }}
+    submodules: 'recursive'
 ```
 
 ### Full workflow: checkout, build, deploy
 
 ```yaml
-name: Deploy to Production
-on:
-  push:
-    branches: [main]
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Fetch secrets
-        uses: bitwarden/sm-action@v2
-        with:
-          access_token: ${{ secrets.BW_ACCESS_TOKEN }}
-          secrets: |
-            abc123 > DB_URL
-
-      - name: Checkout code on server
-        uses: reoclo/checkout@v1
+      - uses: reoclo/checkout@v1
         with:
           api_key: ${{ secrets.REOCLO_API_KEY }}
           server_id: ${{ secrets.REOCLO_SERVER_ID }}
-          token: ${{ github.token }}
 
-      - name: Build
-        uses: reoclo/run@v1
+      - uses: reoclo/run@v1
         with:
           api_key: ${{ secrets.REOCLO_API_KEY }}
           server_id: ${{ secrets.REOCLO_SERVER_ID }}
           working_directory: /opt/deploy/workspace
-          command: docker build -t myapp:latest .
+          command: |
+            docker compose build
+            docker compose up -d
           timeout: 600
-
-      - name: Deploy
-        uses: reoclo/run@v1
-        with:
-          api_key: ${{ secrets.REOCLO_API_KEY }}
-          server_id: ${{ secrets.REOCLO_SERVER_ID }}
-          working_directory: /opt/deploy/workspace
-          command: docker compose up -d
-          env: |
-            DB_URL=${{ env.DB_URL }}
-          timeout: 300
 ```
 
 ## How It Works
 
-1. If `clean` is true, removes the target directory on the server
-2. Clones the repository using the provided token (or fetches if the repo exists and `clean` is false)
-3. Checks out the specified ref (branch, tag, or SHA)
-4. Initializes submodules if requested
-5. Returns the resolved commit SHA as an output
-
-All git operations run on the server via Reoclo's automation API and are fully audited.
+1. The action posts to `POST /api/automation/v1/checkout` with the repository, ref, target path, and token.
+2. The Reoclo API authenticates the key, checks scopes, and dispatches a `git clone` or `git fetch` to the target server's runner agent.
+3. The runner executes the clone or update locally on the server.
+4. The API returns the resolved commit SHA and operation ID for audit.
 
 ## License
 

@@ -24,7 +24,7 @@ inputs:
     description: 'Token for repository access. Defaults to github.token.'
     required: false
   clean:
-    description: 'Remove the target directory before cloning (true/false)'
+    description: 'Remove the target directory before cloning (true / false)'
     required: false
     default: 'true'
   depth:
@@ -32,7 +32,7 @@ inputs:
     required: false
     default: '1'
   submodules:
-    description: 'Checkout submodules (true/false/recursive)'
+    description: 'Checkout submodules (true / false / recursive)'
     required: false
     default: 'false'
   api_url:
