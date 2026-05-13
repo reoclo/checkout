@@ -47,5 +47,5 @@ outputs:
   path:
     description: 'The path on the server where the repo was checked out'
 runs:
-  using: 'node20'
+  using: 'node24'
   main: 'dist/index.js'

@@ -1,15 +1,16 @@
 {
   "name": "@reoclo/checkout",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
+  "type": "module",
   "description": "Clone or update a repository on a Reoclo managed server",
   "scripts": {
     "build": "ncc build src/index.ts -o dist --source-map --license licenses.txt",
     "check": "tsc --noEmit"
   },
   "dependencies": {
-    "@actions/core": "^1.11.0",
-    "@actions/http-client": "^2.2.0"
+    "@actions/core": "^3.0.1",
+    "@actions/http-client": "^4.0.1"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
