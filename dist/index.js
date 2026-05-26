@@ -31063,6 +31063,17 @@ class ReocloClient {
 ;// CONCATENATED MODULE: ./src/index.ts
 
 
+const TREE_READ_HINT = [
+    "",
+    "Hint: this usually means the requested ref is not reachable from the cloned tree.",
+    "If you are deploying from a non-default branch, the action now fetches the requested",
+    "ref directly, so this should not happen on @v1.0.2+. If it still does:",
+    "  - Pass `ref: ${{ github.sha }}` explicitly, or",
+    "  - Set `depth: 0` to fetch full history.",
+].join("\n");
+function shellQuote(value) {
+    return `'${value.replace(/'/g, "'\\''")}'`;
+}
 async function run() {
     try {
         const apiKey = getInput("api_key", { required: true });
@@ -31073,50 +31084,96 @@ async function run() {
         const token = getInput("token") || process.env["GITHUB_TOKEN"] || "";
         const clean = getInput("clean") !== "false";
         const depth = parseInt(getInput("depth") || "1", 10);
+        const fetchTags = getInput("fetch_tags") === "true";
+        const filter = getInput("filter") || "";
+        const sparseCheckout = (getInput("sparse_checkout") || "")
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter(Boolean);
+        const sparseConeMode = getInput("sparse_checkout_cone_mode") !== "false";
         const submodules = getInput("submodules") || "false";
+        const lfs = getInput("lfs") === "true";
+        const persistCredentials = getInput("persist_credentials") !== "false";
+        const githubServerUrl = (getInput("github_server_url") ||
+            process.env["GITHUB_SERVER_URL"] ||
+            "https://github.com").replace(/\/+$/, "");
         const apiUrl = getInput("api_url") || "https://api.reoclo.com";
         if (!repository) {
             setFailed("repository is required (set input or run in a GitHub Actions context)");
             return;
         }
         const client = new ReocloClient(apiKey, apiUrl);
-        const cloneUrl = token
-            ? `https://x-access-token:${token}@github.com/${repository}.git`
-            : `https://github.com/${repository}.git`;
-        // Step 1: Clean if requested
+        const bareRepoUrl = `${githubServerUrl}/${repository}.git`;
+        const authedRepoUrl = token
+            ? bareRepoUrl.replace(/^(https?:\/\/)/, `$1x-access-token:${token}@`)
+            : bareRepoUrl;
+        // Step 1: Clean if requested. `clean: true` removes the entire target path
+        // (including `.git`) so the next step starts from a known-empty state.
         if (clean) {
             info(`Cleaning ${targetPath}...`);
             await client.run(serverId, `rm -rf "${targetPath}"`, { timeoutSeconds: 60 });
         }
-        // Step 2: Clone or fetch
-        const depthFlag = depth > 0 ? `--depth ${depth}` : "";
+        // Step 2: Initialize repo state (or reuse existing one for incremental updates).
         const dirExists = await client.run(serverId, `test -d "${targetPath}/.git" && echo exists || echo missing`, { timeoutSeconds: 15 }).then((r) => r.stdout.trim() === "exists").catch(() => false);
-        if (dirExists && !clean) {
-            // Incremental update
-            info(`Fetching updates in ${targetPath}...`);
-            const fetchCmd = [
+        if (!dirExists) {
+            info(`Initializing ${targetPath}...`);
+            const initCmd = [
+                `mkdir -p "${targetPath}"`,
                 `cd "${targetPath}"`,
-                // Update remote URL in case token changed
-                `git remote set-url origin "${cloneUrl}"`,
-                `git fetch origin ${depthFlag}`,
+                `git init -q`,
+                `git remote add origin "${authedRepoUrl}"`,
             ].join(" && ");
-            await client.run(serverId, fetchCmd, { timeoutSeconds: 120 });
+            await client.run(serverId, initCmd, { timeoutSeconds: 60 });
         }
         else {
-            // Fresh clone
-            info(`Cloning ${repository} into ${targetPath}...`);
-            const cloneCmd = [
-                `mkdir -p "$(dirname "${targetPath}")"`,
-                `git clone ${depthFlag} "${cloneUrl}" "${targetPath}"`,
+            // Update remote URL in case token rotated between runs.
+            await client.run(serverId, `cd "${targetPath}" && git remote set-url origin "${authedRepoUrl}"`, { timeoutSeconds: 30 });
+        }
+        // Step 3: Configure sparse checkout before fetching so unwanted blobs are
+        // skipped when paired with a filter.
+        if (sparseCheckout.length > 0) {
+            info(`Configuring sparse checkout (${sparseCheckout.length} patterns, ${sparseConeMode ? "cone" : "no-cone"})...`);
+            const coneFlag = sparseConeMode ? "--cone" : "--no-cone";
+            const patternsArg = sparseCheckout.map(shellQuote).join(" ");
+            const sparseCmd = [
+                `cd "${targetPath}"`,
+                `git sparse-checkout init ${coneFlag}`,
+                `git sparse-checkout set ${patternsArg}`,
             ].join(" && ");
-            await client.run(serverId, cloneCmd, { timeoutSeconds: 300 });
+            await client.run(serverId, sparseCmd, { timeoutSeconds: 60 });
         }
-        // Step 3: Checkout the ref
-        if (ref) {
-            info(`Checking out ${ref}...`);
-            await client.run(serverId, `cd "${targetPath}" && git checkout --force "${ref}"`, { timeoutSeconds: 60 });
+        // Step 4: Fetch the requested ref directly. This is what makes any SHA on
+        // any branch resolvable, even with a shallow `--depth 1` fetch.
+        const fetchTarget = ref || "HEAD";
+        const fetchFlags = [
+            depth > 0 ? `--depth ${depth}` : "",
+            fetchTags ? "--tags" : "--no-tags",
+            filter ? `--filter=${shellQuote(filter)}` : "",
+            "--force",
+        ].filter(Boolean).join(" ");
+        info(`Fetching ${fetchTarget}...`);
+        const fetchCmd = `cd "${targetPath}" && git fetch ${fetchFlags} origin ${shellQuote(fetchTarget)}`;
+        try {
+            await client.run(serverId, fetchCmd, { timeoutSeconds: 300 });
         }
-        // Step 4: Submodules
+        catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            throw new Error(`Failed to fetch ${fetchTarget} from origin:\n${message}\n` +
+                "Hint: confirm the ref exists and the token has read access to the repository.");
+        }
+        // Step 5: Detached checkout of the fetched commit.
+        info(`Checking out ${fetchTarget}...`);
+        try {
+            await client.run(serverId, `cd "${targetPath}" && git checkout --force --detach FETCH_HEAD`, { timeoutSeconds: 60 });
+        }
+        catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            if (/unable to read tree/i.test(message)) {
+                throw new Error(`Checkout failed: ${message}${TREE_READ_HINT}`);
+            }
+            throw err;
+        }
+        // Step 6: Submodules
         if (submodules === "true") {
             info("Initializing submodules...");
             await client.run(serverId, `cd "${targetPath}" && git submodule update --init`, { timeoutSeconds: 120 });
@@ -31125,14 +31182,30 @@ async function run() {
             info("Initializing submodules (recursive)...");
             await client.run(serverId, `cd "${targetPath}" && git submodule update --init --recursive`, { timeoutSeconds: 300 });
         }
-        // Step 5: Get the resolved commit SHA
+        // Step 7: Git LFS. Skips silently if LFS objects are absent.
+        if (lfs) {
+            info("Downloading Git LFS objects...");
+            const lfsCmd = [
+                `cd "${targetPath}"`,
+                `git lfs install --local`,
+                `git lfs pull`,
+            ].join(" && ");
+            await client.run(serverId, lfsCmd, { timeoutSeconds: 600 });
+        }
+        // Step 8: Scrub credentials if requested. Replaces the authed origin URL
+        // with the bare URL so subsequent on-server git operations don't reveal
+        // the token via `git remote -v` or `.git/config`.
+        if (!persistCredentials && token) {
+            info("Scrubbing credentials from .git/config (persist_credentials=false)...");
+            await client.run(serverId, `cd "${targetPath}" && git remote set-url origin "${bareRepoUrl}"`, { timeoutSeconds: 30 });
+        }
+        // Step 9: Resolve outputs.
         const shaResult = await client.run(serverId, `cd "${targetPath}" && git rev-parse HEAD`, { timeoutSeconds: 15 });
         const commitSha = shaResult.stdout.trim();
-        const refResult = await client.run(serverId, `cd "${targetPath}" && git rev-parse --abbrev-ref HEAD`, { timeoutSeconds: 15 });
-        const checkedOutRef = refResult.stdout.trim();
-        // Set outputs
         setOutput("commit_sha", commitSha);
-        setOutput("ref", checkedOutRef);
+        setOutput("commit", commitSha);
+        setOutput("short_sha", commitSha.slice(0, 7));
+        setOutput("ref", ref || commitSha);
         setOutput("path", targetPath);
         info(`Checked out ${repository}@${commitSha.slice(0, 8)} into ${targetPath}`);
     }
