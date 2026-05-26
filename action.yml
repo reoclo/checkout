@@ -14,7 +14,7 @@ inputs:
     description: 'Repository to checkout (owner/repo). Defaults to the current repository.'
     required: false
   ref:
-    description: 'Branch, tag, or SHA to checkout. Defaults to the default branch.'
+    description: 'Branch, tag, or SHA to checkout. Defaults to the current GITHUB_SHA.'
     required: false
   path:
     description: 'Directory on the server to checkout into'
@@ -24,24 +24,55 @@ inputs:
     description: 'Token for repository access. Defaults to github.token.'
     required: false
   clean:
-    description: 'Remove the target directory before cloning (true / false)'
+    description: 'rm -rf the target path (including .git) before fetching (true / false)'
     required: false
     default: 'true'
   depth:
-    description: 'Clone depth (0 for full clone)'
+    description: 'Fetch depth for the requested ref. 0 for full history.'
     required: false
     default: '1'
+  fetch_tags:
+    description: 'Fetch tags as well as the requested ref, even when depth > 0 (true / false)'
+    required: false
+    default: 'false'
+  filter:
+    description: 'Partial-clone filter applied to fetch (e.g. blob:none, tree:0). Empty = no filter.'
+    required: false
+    default: ''
+  sparse_checkout:
+    description: 'Sparse checkout patterns, one per line. Empty = full working tree.'
+    required: false
+    default: ''
+  sparse_checkout_cone_mode:
+    description: 'Use cone mode for sparse checkout (true / false)'
+    required: false
+    default: 'true'
   submodules:
     description: 'Checkout submodules (true / false / recursive)'
     required: false
     default: 'false'
+  lfs:
+    description: 'Download Git LFS files after checkout (true / false)'
+    required: false
+    default: 'false'
+  persist_credentials:
+    description: 'Keep the access token in .git/config after the action. Set false to scrub it for security.'
+    required: false
+    default: 'true'
+  github_server_url:
+    description: 'Base URL for GitHub (use https://my-ghes.example.com for GitHub Enterprise Server). Defaults to GITHUB_SERVER_URL or https://github.com.'
+    required: false
   api_url:
     description: 'Reoclo API URL (for self-hosted instances)'
     required: false
     default: 'https://api.reoclo.com'
 outputs:
   commit_sha:
-    description: 'The checked-out commit SHA on the server'
+    description: 'The checked-out commit SHA on the server (40 chars)'
+  commit:
+    description: 'Alias for commit_sha (matches actions/checkout naming)'
+  short_sha:
+    description: 'The first 7 chars of the checked-out commit SHA'
   ref:
     description: 'The ref that was checked out'
   path:
