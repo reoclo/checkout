@@ -21,14 +21,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout on server
-        uses: reoclo/checkout@v1
+        uses: reoclo/checkout@v2
         with:
           api_key: ${{ secrets.REOCLO_API_KEY }}
           server_id: ${{ secrets.REOCLO_SERVER_ID }}
           token: ${{ github.token }}
 
       - name: Build and deploy
-        uses: reoclo/run@v1
+        uses: reoclo/run@v2
         with:
           api_key: ${{ secrets.REOCLO_API_KEY }}
           server_id: ${{ secrets.REOCLO_SERVER_ID }}
@@ -82,7 +82,7 @@ For detailed setup, see the [Reoclo documentation](https://docs.reoclo.com/guide
 ### Checkout a specific branch
 
 ```yaml
-- uses: reoclo/checkout@v1
+- uses: reoclo/checkout@v2
   with:
     api_key: ${{ secrets.REOCLO_API_KEY }}
     server_id: ${{ secrets.REOCLO_SERVER_ID }}
@@ -92,7 +92,7 @@ For detailed setup, see the [Reoclo documentation](https://docs.reoclo.com/guide
 ### Checkout into a custom directory
 
 ```yaml
-- uses: reoclo/checkout@v1
+- uses: reoclo/checkout@v2
   with:
     api_key: ${{ secrets.REOCLO_API_KEY }}
     server_id: ${{ secrets.REOCLO_SERVER_ID }}
@@ -102,7 +102,7 @@ For detailed setup, see the [Reoclo documentation](https://docs.reoclo.com/guide
 ### Checkout a different repository
 
 ```yaml
-- uses: reoclo/checkout@v1
+- uses: reoclo/checkout@v2
   with:
     api_key: ${{ secrets.REOCLO_API_KEY }}
     server_id: ${{ secrets.REOCLO_SERVER_ID }}
@@ -114,7 +114,7 @@ For detailed setup, see the [Reoclo documentation](https://docs.reoclo.com/guide
 ### Incremental updates (skip clean)
 
 ```yaml
-- uses: reoclo/checkout@v1
+- uses: reoclo/checkout@v2
   with:
     api_key: ${{ secrets.REOCLO_API_KEY }}
     server_id: ${{ secrets.REOCLO_SERVER_ID }}
@@ -127,7 +127,7 @@ For detailed setup, see the [Reoclo documentation](https://docs.reoclo.com/guide
 For large monorepos, fetch only the subtrees you need. Combine with `filter: blob:none` for a partial clone that downloads blobs on demand:
 
 ```yaml
-- uses: reoclo/checkout@v1
+- uses: reoclo/checkout@v2
   with:
     api_key: ${{ secrets.REOCLO_API_KEY }}
     server_id: ${{ secrets.REOCLO_SERVER_ID }}
@@ -141,7 +141,7 @@ For large monorepos, fetch only the subtrees you need. Combine with `filter: blo
 ### Git LFS
 
 ```yaml
-- uses: reoclo/checkout@v1
+- uses: reoclo/checkout@v2
   with:
     api_key: ${{ secrets.REOCLO_API_KEY }}
     server_id: ${{ secrets.REOCLO_SERVER_ID }}
@@ -153,7 +153,7 @@ For large monorepos, fetch only the subtrees you need. Combine with `filter: blo
 Pass your GHES base URL — the action will derive the clone URL from it:
 
 ```yaml
-- uses: reoclo/checkout@v1
+- uses: reoclo/checkout@v2
   with:
     api_key: ${{ secrets.REOCLO_API_KEY }}
     server_id: ${{ secrets.REOCLO_SERVER_ID }}
@@ -166,7 +166,7 @@ Pass your GHES base URL — the action will derive the clone URL from it:
 By default the action writes the token into `.git/config` so subsequent `git fetch` calls authenticate. For long-lived deploy paths where you don't want the token resident, scrub it:
 
 ```yaml
-- uses: reoclo/checkout@v1
+- uses: reoclo/checkout@v2
   with:
     api_key: ${{ secrets.REOCLO_API_KEY }}
     server_id: ${{ secrets.REOCLO_SERVER_ID }}
@@ -176,7 +176,7 @@ By default the action writes the token into `.git/config` so subsequent `git fet
 ### Full clone with submodules
 
 ```yaml
-- uses: reoclo/checkout@v1
+- uses: reoclo/checkout@v2
   with:
     api_key: ${{ secrets.REOCLO_API_KEY }}
     server_id: ${{ secrets.REOCLO_SERVER_ID }}
@@ -191,12 +191,12 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: reoclo/checkout@v1
+      - uses: reoclo/checkout@v2
         with:
           api_key: ${{ secrets.REOCLO_API_KEY }}
           server_id: ${{ secrets.REOCLO_SERVER_ID }}
 
-      - uses: reoclo/run@v1
+      - uses: reoclo/run@v2
         with:
           api_key: ${{ secrets.REOCLO_API_KEY }}
           server_id: ${{ secrets.REOCLO_SERVER_ID }}
@@ -209,14 +209,34 @@ jobs:
 
 ## How It Works
 
-1. The action posts to `POST /api/automation/v1/checkout` with the repository, ref, target path, and token.
-2. The Reoclo API authenticates the key, checks scopes, and dispatches the git operation to the target server's runner agent.
-3. On the server, the runner runs `git init` + `git fetch origin <ref> --depth <depth>` + `git checkout --detach FETCH_HEAD`. Fetching the requested ref directly means **any SHA on any branch** resolves at `depth: 1` — there is no "shallow clone is of the default branch, so non-default refs fail" trap.
-4. The API returns the resolved commit SHA and operation ID for audit.
+`v2` is a thin wrapper around the [`reoclo` CLI](https://github.com/reoclo/cli) (the same
+engine that powers Gitea Actions and Woodpecker), so behaviour is identical across CI systems:
 
-### Why fetch-by-ref?
+1. A composite step installs the pinned `reoclo` CLI (downloaded once per job; no Node runtime needed).
+2. It runs `reoclo checkout <server_id> … --output json` with `REOCLO_AUTOMATION_KEY` from `api_key`,
+   mapping each input to a flag.
+3. The CLI calls the Reoclo automation API, which dispatches the git operation to the target
+   server's runner agent: `git init` + `git fetch origin <ref> --depth <depth>` +
+   `git checkout --detach FETCH_HEAD`. Fetching the requested ref directly means **any SHA on any
+   branch** resolves at `depth: 1` — no "shallow clone is of the default branch, so non-default
+   refs fail" trap. Sparse-checkout, partial-clone filter, submodules, and LFS are applied on the
+   server as requested; the token is scrubbed from `.git/config` unless `persist_credentials: true`.
+4. The resolved commit SHA / ref / path are mapped to this action's outputs.
 
-Earlier versions (`@v1.0.1` and below) ran `git clone --depth 1 <url>` then `git checkout <sha>`. That clones the default branch only, so a SHA on a non-default branch (e.g. a merge commit on `staging`) failed with `fatal: unable to read tree`. From `@v1.0.2` onwards the action fetches the requested ref directly, mirroring the strategy [`actions/checkout`](https://github.com/actions/checkout) uses.
+`jq` (used to parse the CLI's JSON output) is preinstalled on GitHub-hosted and standard Gitea
+`act_runner` images.
+
+## Gitea Actions
+
+The repo is mirrored to `git.boxpositron.dev/reoclo/checkout`, so the same action runs on a
+self-hosted Gitea `act_runner`:
+
+```yaml
+- uses: git.boxpositron.dev/reoclo/checkout@v2
+  with:
+    api_key: ${{ secrets.REOCLO_API_KEY }}
+    server_id: ${{ secrets.REOCLO_SERVER_ID }}
+```
 
 ## License
 

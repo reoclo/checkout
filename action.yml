@@ -69,14 +69,85 @@ inputs:
 outputs:
   commit_sha:
     description: 'The checked-out commit SHA on the server (40 chars)'
+    value: ${{ steps.checkout.outputs.commit_sha }}
   commit:
     description: 'Alias for commit_sha (matches actions/checkout naming)'
+    value: ${{ steps.checkout.outputs.commit }}
   short_sha:
     description: 'The first 7 chars of the checked-out commit SHA'
+    value: ${{ steps.checkout.outputs.short_sha }}
   ref:
     description: 'The ref that was checked out'
+    value: ${{ steps.checkout.outputs.ref }}
   path:
     description: 'The path on the server where the repo was checked out'
+    value: ${{ steps.checkout.outputs.path }}
 runs:
-  using: 'node24'
-  main: 'dist/index.js'
+  using: 'composite'
+  steps:
+    - name: Ensure reoclo CLI
+      shell: bash
+      env:
+        REOCLO_PIN: v0.44.0
+      run: |
+        set -euo pipefail
+        want="${REOCLO_PIN#v}"
+        if command -v reoclo >/dev/null 2>&1 && [ "$(reoclo --version 2>/dev/null || true)" = "$want" ]; then
+          echo "reoclo $want already present"
+          exit 0
+        fi
+        dir="${RUNNER_TEMP:-/tmp}/reoclo-bin"
+        mkdir -p "$dir"
+        curl -fsSL "https://github.com/reoclo/cli/releases/download/${REOCLO_PIN}/install.sh" \
+          | sh -s -- --version "${REOCLO_PIN}" --install-dir "$dir" --no-modify-path
+        echo "$dir" >> "$GITHUB_PATH"
+    - name: Checkout on server
+      id: checkout
+      shell: bash
+      env:
+        REOCLO_AUTOMATION_KEY: ${{ inputs.api_key }}
+        REOCLO_API_URL: ${{ inputs.api_url }}
+        IN_SERVER_ID: ${{ inputs.server_id }}
+        IN_REPOSITORY: ${{ inputs.repository }}
+        IN_REF: ${{ inputs.ref }}
+        IN_PATH: ${{ inputs.path }}
+        IN_TOKEN: ${{ inputs.token || github.token }}
+        IN_CLEAN: ${{ inputs.clean }}
+        IN_DEPTH: ${{ inputs.depth }}
+        IN_FETCH_TAGS: ${{ inputs.fetch_tags }}
+        IN_FILTER: ${{ inputs.filter }}
+        IN_SPARSE: ${{ inputs.sparse_checkout }}
+        IN_SPARSE_CONE: ${{ inputs.sparse_checkout_cone_mode }}
+        IN_SUBMODULES: ${{ inputs.submodules }}
+        IN_LFS: ${{ inputs.lfs }}
+        IN_PERSIST: ${{ inputs.persist_credentials }}
+        IN_GHSERVER: ${{ inputs.github_server_url }}
+      run: |
+        set -euo pipefail
+        args=(checkout "$IN_SERVER_ID" --output json)
+        if [ -n "$IN_REPOSITORY" ]; then args+=(--repository "$IN_REPOSITORY"); fi
+        if [ -n "$IN_REF" ]; then args+=(--ref "$IN_REF"); fi
+        if [ -n "$IN_PATH" ]; then args+=(--path "$IN_PATH"); fi
+        if [ -n "$IN_TOKEN" ]; then args+=(--token "$IN_TOKEN"); fi
+        if [ "$IN_CLEAN" = "false" ]; then args+=(--no-clean); fi
+        if [ -n "$IN_DEPTH" ]; then args+=(--depth "$IN_DEPTH"); fi
+        if [ "$IN_FETCH_TAGS" = "true" ]; then args+=(--fetch-tags); fi
+        if [ -n "$IN_FILTER" ]; then args+=(--filter "$IN_FILTER"); fi
+        if [ -n "$IN_SPARSE" ]; then
+          while IFS= read -r line; do
+            if [ -n "$line" ]; then args+=(--sparse-checkout "$line"); fi
+          done <<< "$IN_SPARSE"
+        fi
+        if [ -n "$IN_SPARSE_CONE" ]; then args+=(--sparse-checkout-cone-mode "$IN_SPARSE_CONE"); fi
+        if [ -n "$IN_SUBMODULES" ]; then args+=(--submodules "$IN_SUBMODULES"); fi
+        if [ "$IN_LFS" = "true" ]; then args+=(--lfs); fi
+        if [ "$IN_PERSIST" != "false" ]; then args+=(--persist-credentials); fi
+        if [ -n "$IN_GHSERVER" ]; then args+=(--github-server-url "$IN_GHSERVER"); fi
+        out="$(reoclo "${args[@]}")"
+        {
+          echo "commit_sha=$(printf '%s' "$out" | jq -r '.commit_sha')"
+          echo "commit=$(printf '%s' "$out" | jq -r '.commit')"
+          echo "short_sha=$(printf '%s' "$out" | jq -r '.short_sha')"
+          echo "ref=$(printf '%s' "$out" | jq -r '.ref')"
+          echo "path=$(printf '%s' "$out" | jq -r '.path')"
+        } >> "$GITHUB_OUTPUT"
