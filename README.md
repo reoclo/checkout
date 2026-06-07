@@ -1,5 +1,10 @@
 # Reoclo Checkout (`@reoclo/checkout`)
 
+[![GitHub Marketplace](https://img.shields.io/badge/Marketplace-Reoclo%20Checkout-2188ff?logo=github&logoColor=white)](https://github.com/marketplace/actions/reoclo-checkout)
+[![Release](https://img.shields.io/github/v/release/reoclo/checkout?logo=github&label=release&color=2188ff&sort=semver)](https://github.com/reoclo/checkout/releases/latest)
+[![CI](https://github.com/reoclo/checkout/actions/workflows/ci.yml/badge.svg)](https://github.com/reoclo/checkout/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+
 Clone or update a repository on a [Reoclo](https://reoclo.com) managed server from GitHub Actions.
 
 Works like `actions/checkout`, but the code ends up on your remote server instead of the GitHub runner. Pairs with [`@reoclo/run`](https://github.com/reoclo/run) for build and deploy steps.
