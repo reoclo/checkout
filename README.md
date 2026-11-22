@@ -3,7 +3,7 @@
 [![GitHub Marketplace](https://img.shields.io/badge/Marketplace-Reoclo%20Checkout-2188ff?logo=github&logoColor=white)](https://github.com/marketplace/actions/reoclo-checkout)
 [![Release](https://img.shields.io/github/v/release/reoclo/checkout?logo=github&label=release&color=2188ff&sort=semver)](https://github.com/reoclo/checkout/releases/latest)
 [![CI](https://github.com/reoclo/checkout/actions/workflows/ci.yml/badge.svg)](https://github.com/reoclo/checkout/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 Clone or update a repository on a [Reoclo](https://reoclo.com) managed server from GitHub Actions.
 
@@ -245,4 +245,4 @@ self-hosted Gitea `act_runner`:
 
 ## License
 
-MIT
+Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
